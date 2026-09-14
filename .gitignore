@@ -2,3 +2,5 @@
 .env
 *.local
 .playwright-cli/
+.vercel
+.env*
