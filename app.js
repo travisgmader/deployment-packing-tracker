@@ -7,7 +7,9 @@ const sb = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, 
     // a laptop still works when it's opened on a phone. PKCE (the default) keeps
     // the verifier in localStorage and would break that very common case.
     flowType: 'implicit',
-    detectSessionInUrl: true,
+    // The magic-link callback is consumed by hand in boot() — supabase-js's own
+    // fragment detection is version-sensitive and silently no-ops on 2.58.
+    detectSessionInUrl: false,
     persistSession: true,
     autoRefreshToken: true,
   },
@@ -62,16 +64,36 @@ function tally(list) {
 /* ------------------------------------------------------------------ auth */
 
 async function boot() {
-  // Register first: with implicit flow the session can land from the URL
-  // fragment a tick after getSession() has already answered "no".
   sb.auth.onAuthStateChange((evt, s) => {
     if (s?.user && !state.user) enter(s.user);
     else if (evt === 'SIGNED_OUT' && state.user) location.reload();
   });
 
+  const claimed = await claimLinkFromUrl();
+  if (claimed) return;
+
   const { data: { session } } = await sb.auth.getSession();
   if (session?.user) enter(session.user);
   else if (!state.user) showGate();
+}
+
+// A magic link lands as #access_token=…&refresh_token=… . Trade it for a stored
+// session, then wipe the fragment so the tokens don't sit in the address bar.
+async function claimLinkFromUrl() {
+  if (!location.hash.includes('access_token')) return false;
+  const p = new URLSearchParams(location.hash.slice(1));
+  const { data, error } = await sb.auth.setSession({
+    access_token: p.get('access_token'),
+    refresh_token: p.get('refresh_token'),
+  });
+  history.replaceState(null, '', location.pathname + location.search);
+  if (error || !data?.user) {
+    showGate();
+    note('#loginMsg', 'err', 'That sign-in link has expired. Request a fresh one below.');
+    return true;
+  }
+  if (!state.user) enter(data.user);
+  return true;
 }
 
 function showGate() {
