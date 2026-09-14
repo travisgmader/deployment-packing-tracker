@@ -125,12 +125,18 @@ $('#loginForm').addEventListener('submit', async (e) => {
   });
   btn.disabled = false; btn.textContent = 'Email me a sign-in link';
   if (error) {
-    const unknown = /signups? not allowed|user not found/i.test(error.message);
-    return note('#loginMsg', 'err', unknown
-      ? `${email} isn't on the board yet. Ask Travis to add you, then try again.`
-      : error.message);
+    if (/signups? not allowed|user not found/i.test(error.message))
+      return note('#loginMsg', 'err',
+        `${email} isn't on the board yet. Ask Travis to add you, then try again.`);
+    // The project sends through Supabase's built-in mailer, which allows only a
+    // couple of messages an hour across everyone. Say so plainly — otherwise
+    // this looks like the site is broken.
+    if (/rate limit|too many requests/i.test(error.message) || error.status === 429)
+      return note('#loginMsg', 'err',
+        'Too many sign-in emails have gone out in the last hour — that limit is shared by everyone on the board. Wait an hour and try again, or ask Travis to send you a link directly.');
+    return note('#loginMsg', 'err', error.message);
   }
-  note('#loginMsg', 'ok', `Check ${email} — the sign-in link is good for one hour. Open it on the device you want to track from.`);
+  note('#loginMsg', 'ok', `Check ${email} — the link is good for one hour and works on any device. If it hasn't arrived in a few minutes, look in your spam folder before requesting another: only a couple of these can be sent per hour.`);
 });
 
 $('#signout').addEventListener('click', async () => {
