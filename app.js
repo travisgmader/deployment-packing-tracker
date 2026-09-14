@@ -77,6 +77,7 @@ async function boot() {
   sb.auth.onAuthStateChange((evt, s) => {
     if (s?.user && !state.user) enter(s.user);
     else if (evt === 'SIGNED_OUT' && state.user) location.reload();
+    else if (evt === 'TOKEN_REFRESHED' && s) sb.realtime.setAuth(s.access_token);
   });
 
   const claimed = await claimLinkFromUrl();
@@ -180,10 +181,32 @@ async function refresh() {
   state.lists = lists.data || [];
   state.items = items.data || [];
   state.activity = act.data || [];
+  lastSync = Date.now();
+}
+
+let boardChannel = null;
+let channelGen = 0;
+let retryTimer = null;
+let lastSync = 0;
+
+function setLive(live) {
+  $('#liveNote').innerHTML =
+    `<span class="dot ${live ? '' : 'off'}"></span>${live ? 'live' : 'reconnecting…'}`;
 }
 
 function subscribe() {
-  sb.channel('board')
+  clearTimeout(retryTimer);
+  // Drop the old channel first, and forget it before it reports CLOSED, so its
+  // own callback can't schedule yet another rebuild.
+  const old = boardChannel;
+  boardChannel = null;
+  if (old) sb.removeChannel(old);
+
+  // A fresh topic each time: the client can hand back a same-named channel
+  // that is still shutting down.
+  const ch = sb.channel(`board-${++channelGen}`);
+  boardChannel = ch;
+  ch
     .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, (p) => {
       if (p.eventType === 'DELETE') {
         state.items = state.items.filter((i) => i.id !== p.old.id);
@@ -199,12 +222,26 @@ function subscribe() {
       state.activity = state.activity.slice(0, 80);
       if (state.tab === 'activity') render();
     })
-    .subscribe((status) => {
-      const live = status === 'SUBSCRIBED';
-      $('#liveNote').innerHTML =
-        `<span class="dot ${live ? '' : 'off'}"></span>${live ? 'live' : 'reconnecting…'}`;
+    .subscribe(async (status) => {
+      if (ch !== boardChannel) return;          // a channel we've already replaced
+      setLive(status === 'SUBSCRIBED');
+      if (status === 'SUBSCRIBED') {
+        if (Date.now() - lastSync > 2000) { await refresh(); render(); }
+      } else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) {
+        // The server closes a channel whose sign-in token lapsed, and the client
+        // does not rejoin it by itself — the board would silently stop updating.
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(subscribe, 3000);
+      }
     });
 }
+
+// A phone that slept may have lost its channel, or missed changes while dark.
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible' || !state.user) return;
+  if (boardChannel?.state !== 'joined') subscribe();
+  else if (Date.now() - lastSync > 60000) { await refresh(); render(); }
+});
 
 async function patch(id, fields) {
   const row = state.items.find((i) => i.id === id);
