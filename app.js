@@ -1,7 +1,18 @@
 /* Deployment Packing Tracker — shared board backed by Supabase.
    One master list, live-synced; every signed-in member edits the same rows. */
 
-const sb = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+const sb = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
+  auth: {
+    // Implicit flow puts the session in the URL fragment, so a link requested on
+    // a laptop still works when it's opened on a phone. PKCE (the default) keeps
+    // the verifier in localStorage and would break that very common case.
+    flowType: 'implicit',
+    detectSessionInUrl: true,
+    persistSession: true,
+    autoRefreshToken: true,
+  },
+});
+window.sb = sb;   // handy from the console
 
 const FLOW = {
   packing: ['Need', 'Ordered', 'Prepped', 'Packed'],
@@ -51,14 +62,16 @@ function tally(list) {
 /* ------------------------------------------------------------------ auth */
 
 async function boot() {
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) return enter(session.user);
-  showGate();
-
-  sb.auth.onAuthStateChange((_evt, s) => {
+  // Register first: with implicit flow the session can land from the URL
+  // fragment a tick after getSession() has already answered "no".
+  sb.auth.onAuthStateChange((evt, s) => {
     if (s?.user && !state.user) enter(s.user);
-    if (!s && state.user) location.reload();
+    else if (evt === 'SIGNED_OUT' && state.user) location.reload();
   });
+
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user) enter(session.user);
+  else if (!state.user) showGate();
 }
 
 function showGate() {
