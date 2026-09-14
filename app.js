@@ -229,11 +229,12 @@ function summaryView() {
   const pct = totals.total ? totals.done / totals.total : 0;
   const R = 48, C = 2 * Math.PI * R;
 
-  const packing = state.lists.filter((l) => l.kind === 'packing');
-  const agg = {};
-  packing.forEach((l) => {
+  // Fold both vocabularies into one legend so the numbers add up to the headline.
+  const SAME = { 'To Do': 'Need', 'In Progress': 'Ordered', 'Done': 'Packed' };
+  const agg = Object.fromEntries(FLOW.packing.map((s) => [s, 0]));
+  state.lists.forEach((l) => {
     const t = tally(l);
-    FLOW.packing.forEach((s) => { agg[s] = (agg[s] || 0) + t.counts[s]; });
+    FLOW[l.kind].forEach((s) => { agg[SAME[s] || s] += t.counts[s]; });
   });
 
   return `
@@ -262,7 +263,8 @@ function summaryView() {
   <div class="grid">
     ${state.lists.map((l) => {
       const t = tally(l);
-      const segs = FLOW[l.kind].map((s) => t.counts[s]
+      // Skip the first status: "Need"/"To Do" is the empty track, not progress.
+      const segs = FLOW[l.kind].slice(1).map((s) => t.counts[s]
         ? `<i style="width:${(t.counts[s] / t.total) * 100}%;background:var(--${TONE[s]})"></i>` : '').join('');
       return `<button class="bagcard" data-tab="${l.slug}">
         <h3>${esc(l.name)}</h3>
