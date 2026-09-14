@@ -1,5 +1,6 @@
-/* Deployment Packing Tracker — shared board backed by Supabase.
-   One master list, live-synced; every signed-in member edits the same rows. */
+/* Deployment Packing Tracker — boards backed by Supabase.
+   Each member belongs to one board, live-synced with anyone else on it.
+   Row-level security decides which board's rows a query returns. */
 
 const sb = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
   auth: {
@@ -414,7 +415,7 @@ function listView(list) {
     ${body}
     <div class="addbar">
       <span class="qty">${state.selectMode
-        ? 'Tap rows to select them, then Delete. Anything you remove is gone for everyone.'
+        ? 'Tap rows to select them, then Move or Delete. Deleting can\'t be undone.'
         : `Tap a status chip to advance it: ${flow.join(' → ')} → back to ${flow[0]}.`}</span>
     </div>
   </div>`;
@@ -422,7 +423,7 @@ function listView(list) {
 
 function activityView() {
   if (!state.activity.length)
-    return '<div class="card"><div class="empty">No changes yet. Updates from everyone on the board show up here.</div></div>';
+    return '<div class="card"><div class="empty">No changes yet. Updates to this list show up here.</div></div>';
   const fmt = (ts) => {
     const d = new Date(ts), now = new Date();
     const sameDay = d.toDateString() === now.toDateString();
@@ -554,7 +555,7 @@ async function removeItems(items) {
   const what = items.length === 1
     ? `"${items[0].name}"`
     : `${items.length} items`;
-  if (!confirm(`Delete ${what} for everyone on the board? This can't be undone.`)) return;
+  if (!confirm(`Delete ${what}? This can't be undone.`)) return;
 
   const ids = items.map((i) => i.id);
   const keep = state.items;
