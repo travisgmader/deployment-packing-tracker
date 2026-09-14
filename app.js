@@ -220,6 +220,9 @@ function renderTabs() {
   });
   tabs.push(`<button data-tab="activity" aria-current="${state.tab === 'activity'}">Activity</button>`);
   $('#tabs').innerHTML = tabs.join('');
+  // On a phone the strip scrolls; keep the tab you're on in view.
+  $('#tabs').querySelector('[aria-current="true"]')
+    ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 function summaryView() {
