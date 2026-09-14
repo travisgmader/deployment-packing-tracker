@@ -43,6 +43,8 @@ const state = {
   lists: [], items: [], activity: [],
   tab: 'summary', search: '', filter: 'all',
   editing: null,
+  selectMode: false,
+  selected: new Set(),
 };
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -290,15 +292,22 @@ function summaryView() {
   </div>`;
 }
 
-function listView(list) {
-  if (!list) return '<div class="card"><div class="empty">List not found.</div></div>';
-  const flow = FLOW[list.kind];
+// The rows currently on screen, after search and filter.
+function visibleRows(list) {
   const q = state.search.toLowerCase();
   let rows = itemsOf(list.id);
   if (q) rows = rows.filter((i) =>
     (i.name + ' ' + (i.category || '') + ' ' + (i.notes || '')).toLowerCase().includes(q));
   if (state.filter === 'open') rows = rows.filter((i) => i.status !== DONE[list.kind]);
   else if (state.filter === 'done') rows = rows.filter((i) => i.status === DONE[list.kind]);
+  return rows;
+}
+
+function listView(list) {
+  if (!list) return '<div class="card"><div class="empty">List not found.</div></div>';
+  const flow = FLOW[list.kind];
+  const q = state.search.toLowerCase();
+  const rows = visibleRows(list);
 
   const groups = [];
   rows.forEach((i) => {
@@ -309,21 +318,25 @@ function listView(list) {
   });
 
   const t = tally(list);
+  const allPicked = rows.length > 0 && rows.every((i) => state.selected.has(i.id));
   const body = groups.length ? groups.map((g) => `
     <div class="cat">${esc(g.key)}</div>
     ${g.rows.map((i) => {
       const done = i.status === DONE[list.kind];
       const qty = i.qty != null ? `<span class="qty">${(+i.qty) % 1 ? i.qty : +i.qty}${i.unit ? ' ' + esc(i.unit) : ''}</span>` : '';
       const flag = /^added from packing guide/i.test(i.notes || '');
-      return `<div class="row ${done ? 'done' : ''}" data-id="${i.id}">
+      const picked = state.selected.has(i.id);
+      return `<div class="row ${done ? 'done' : ''} ${state.selectMode ? 'picking' : ''} ${picked ? 'picked' : ''}" data-id="${i.id}">
+        ${state.selectMode ? `<span class="tick" aria-hidden="true">${picked ? '✓' : ''}</span>` : ''}
         <div class="nm">
           <b>${esc(i.name)}</b>${qty}
           ${i.notes ? `<span class="nt ${flag ? 'flag' : ''}">${esc(i.notes)}</span>` : ''}
         </div>
-        <div class="rowacts">
+        ${state.selectMode ? '' : `<div class="rowacts">
           <button class="chip" data-s="${esc(i.status)}" data-act="cycle">${esc(i.status)}</button>
           <button class="iconbtn" data-act="edit" aria-label="Edit ${esc(i.name)}">✎</button>
-        </div>
+          <button class="iconbtn danger" data-act="del" aria-label="Delete ${esc(i.name)}">🗑</button>
+        </div>`}
       </div>`;
     }).join('')}`).join('')
     : `<div class="empty">${q || state.filter !== 'all' ? 'Nothing matches that filter.' : 'No items yet.'}</div>`;
@@ -341,11 +354,19 @@ function listView(list) {
         <button data-filter="open" aria-pressed="${state.filter === 'open'}">Open</button>
         <button data-filter="done" aria-pressed="${state.filter === 'done'}">${DONE[list.kind]}</button>
       </div>
+      <button class="btn sm ghost" data-act="selectmode">${state.selectMode ? 'Done' : 'Select'}</button>
       <button class="btn sm" data-act="add">+ Add</button>
     </div>
+    ${state.selectMode ? `<div class="selbar">
+      <span class="selcount">${state.selected.size} selected</span>
+      <button class="btn sm ghost" data-act="selectall">${allPicked ? 'Clear all' : `Select all ${rows.length}`}</button>
+      <button class="btn sm danger-btn" data-act="delsel" ${state.selected.size ? '' : 'disabled'}>Delete</button>
+    </div>` : ''}
     ${body}
     <div class="addbar">
-      <span class="qty">Tap a status chip to advance it: ${flow.join(' → ')} → back to ${flow[0]}.</span>
+      <span class="qty">${state.selectMode
+        ? 'Tap rows to select them, then Delete. Anything you remove is gone for everyone.'
+        : `Tap a status chip to advance it: ${flow.join(' → ')} → back to ${flow[0]}.`}</span>
     </div>
   </div>`;
 }
@@ -380,6 +401,7 @@ function activityView() {
 function wire() {
   document.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => {
     state.tab = b.dataset.tab; state.search = ''; state.filter = 'all';
+    state.selectMode = false; state.selected.clear();
     window.scrollTo(0, 0); render();
   });
 
@@ -398,16 +420,68 @@ function wire() {
   document.querySelectorAll('.row').forEach((row) => {
     const item = state.items.find((i) => i.id === row.dataset.id);
     const list = state.lists.find((l) => l.id === item.list_id);
+
+    if (state.selectMode) {
+      // The whole row is the hit target while selecting — easier on a phone.
+      row.onclick = () => {
+        state.selected.has(item.id) ? state.selected.delete(item.id)
+                                    : state.selected.add(item.id);
+        render();
+      };
+      return;
+    }
+
     row.querySelector('[data-act="cycle"]').onclick = () => {
       const flow = FLOW[list.kind];
       const next = flow[(flow.indexOf(item.status) + 1) % flow.length];
       patch(item.id, { status: next });
     };
     row.querySelector('[data-act="edit"]').onclick = () => openEdit(item, list);
+    row.querySelector('[data-act="del"]').onclick = () => removeItems([item]);
   });
 
-  const add = document.querySelector('[data-act="add"]');
-  if (add) add.onclick = () => openEdit(null, listBySlug(state.tab));
+  const on = (act, fn) => {
+    const el = document.querySelector(`[data-act="${act}"]`);
+    if (el) el.onclick = fn;
+  };
+  on('add', () => openEdit(null, listBySlug(state.tab)));
+  on('selectmode', () => {
+    state.selectMode = !state.selectMode;
+    state.selected.clear();
+    render();
+  });
+  on('selectall', () => {
+    const list = listBySlug(state.tab);
+    const shown = visibleRows(list);
+    const allPicked = shown.length > 0 && shown.every((i) => state.selected.has(i.id));
+    shown.forEach((i) => allPicked ? state.selected.delete(i.id) : state.selected.add(i.id));
+    render();
+  });
+  on('delsel', () => {
+    const picked = state.items.filter((i) => state.selected.has(i.id));
+    if (picked.length) removeItems(picked);
+  });
+}
+
+// One confirmation, whether it's a single row or a whole selection.
+async function removeItems(items) {
+  const what = items.length === 1
+    ? `"${items[0].name}"`
+    : `${items.length} items`;
+  if (!confirm(`Delete ${what} for everyone on the board? This can't be undone.`)) return;
+
+  const ids = items.map((i) => i.id);
+  const keep = state.items;
+  state.items = state.items.filter((i) => !state.selected.has(i.id) && !ids.includes(i.id));
+  state.selected.clear();
+  render();
+
+  const { error } = await sb.from('items').delete().in('id', ids);
+  if (error) {
+    state.items = keep;                 // put them back if the server refused
+    render();
+    alert(error.message);
+  }
 }
 
 /* ------------------------------------------------------------ edit modal */

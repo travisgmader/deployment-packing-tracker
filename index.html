@@ -201,6 +201,27 @@
   .iconbtn{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;
     color:var(--ink-3);font-size:15px;flex:none}
   .iconbtn:hover{background:var(--line-soft);color:var(--ink)}
+  .iconbtn.danger:hover{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger)}
+
+  /* ------------------------------------------------------- select mode */
+  .row.picking{cursor:pointer;user-select:none}
+  .row.picked{background:var(--accent-soft)}
+  .row.picked:hover{background:var(--accent-soft)}
+  .tick{
+    flex:none;width:21px;height:21px;border-radius:6px;border:1.5px solid var(--line);
+    display:grid;place-items:center;font-size:12px;font-weight:700;margin-top:1px;
+    background:var(--panel);color:transparent;
+  }
+  .row.picked .tick{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+  .selbar{
+    display:flex;align-items:center;gap:9px;padding:10px 20px;flex-wrap:wrap;
+    background:var(--accent-soft);border-bottom:1px solid var(--line-soft);
+    position:sticky;top:0;z-index:5;
+  }
+  .selcount{font-size:13px;font-weight:700;color:var(--accent);margin-right:auto;
+    font-variant-numeric:tabular-nums}
+  .btn.danger-btn{background:var(--danger);color:#fff}
+  .btn.danger-btn:disabled{opacity:.45}
   .empty{padding:44px 20px;text-align:center;color:var(--ink-3);font-size:14px}
   .addbar{padding:14px 20px;border-top:1px solid var(--line-soft);background:var(--panel-2)}
 
@@ -232,7 +253,7 @@
 
   @media (max-width:560px){
     .row{padding-inline:14px;gap:9px}
-    .cat,.listhead,.toolbar,.addbar,.act{padding-inline:14px}
+    .cat,.listhead,.toolbar,.addbar,.act,.selbar{padding-inline:14px}
     .chip{min-width:0;padding:5px 9px;font-size:11.5px}
     .overall{padding:18px;gap:16px}
     .ring{width:88px;height:88px}
