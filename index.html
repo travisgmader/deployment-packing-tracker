@@ -220,6 +220,8 @@
   }
   .selcount{font-size:13px;font-weight:700;color:var(--accent);margin-right:auto;
     font-variant-numeric:tabular-nums}
+  select.movesel{width:auto;padding:6px 10px;font-size:13px;font-weight:600;background:var(--panel)}
+  select.movesel:disabled{opacity:.45}
   .btn.danger-btn{background:var(--danger);color:#fff}
   .btn.danger-btn:disabled{opacity:.45}
   .empty{padding:44px 20px;text-align:center;color:var(--ink-3);font-size:14px}
@@ -299,6 +301,7 @@
   <form method="dialog" class="sheet" id="editForm">
     <h3 id="editTitle">Edit item</h3>
     <label class="field"><span>Item</span><input type="text" id="f_name" required></label>
+    <label class="field"><span>Bag / list</span><select id="f_list"></select></label>
     <label class="field"><span>Category</span><input type="text" id="f_cat" list="catlist"></label>
     <datalist id="catlist"></datalist>
     <div class="two" id="qtyFields">

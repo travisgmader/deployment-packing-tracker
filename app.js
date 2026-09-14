@@ -21,6 +21,14 @@ const FLOW = {
   tasks:   ['To Do', 'In Progress', 'Done'],
 };
 const DONE = { packing: 'Packed', tasks: 'Done' };
+// Moving between a bag and the admin checklist changes status vocabulary.
+const CROSS = {
+  tasks:   { 'Need': 'To Do', 'Ordered': 'In Progress', 'Prepped': 'In Progress', 'Packed': 'Done' },
+  packing: { 'To Do': 'Need', 'In Progress': 'Ordered', 'Done': 'Packed' },
+};
+const statusFor = (status, toKind) =>
+  FLOW[toKind].includes(status) ? status : (CROSS[toKind][status] || FLOW[toKind][0]);
+
 const TONE = {
   'Need': 'need', 'To Do': 'need',
   'Ordered': 'ordered', 'In Progress': 'ordered',
@@ -360,6 +368,10 @@ function listView(list) {
     ${state.selectMode ? `<div class="selbar">
       <span class="selcount">${state.selected.size} selected</span>
       <button class="btn sm ghost" data-act="selectall">${allPicked ? 'Clear all' : `Select all ${rows.length}`}</button>
+      <select class="movesel" data-act="movesel" ${state.selected.size ? '' : 'disabled'} aria-label="Move selected items to">
+        <option value="">Move to…</option>
+        ${state.lists.filter((l) => l.id !== list.id).map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}
+      </select>
       <button class="btn sm danger-btn" data-act="delsel" ${state.selected.size ? '' : 'disabled'}>Delete</button>
     </div>` : ''}
     ${body}
@@ -387,11 +399,15 @@ function activityView() {
       txt = `<b>${esc(a.actor_name)}</b> moved <b>${esc(a.item_name)}</b> to <span class="s" data-s="${esc(a.to_status)}">${esc(a.to_status)}</span>`;
     else if (a.action === 'add')    txt = `<b>${esc(a.actor_name)}</b> added <b>${esc(a.item_name)}</b>`;
     else if (a.action === 'delete') txt = `<b>${esc(a.actor_name)}</b> removed <b>${esc(a.item_name)}</b>`;
+    else if (a.action === 'move') {
+      const from = a.from_list ? listBySlug(a.from_list) : null;
+      txt = `<b>${esc(a.actor_name)}</b> moved <b>${esc(a.item_name)}</b>${from ? ` from ${esc(from.name)}` : ''} to`;
+    }
     else                            txt = `<b>${esc(a.actor_name)}</b> edited <b>${esc(a.item_name)}</b>`;
     const l = a.list_slug ? listBySlug(a.list_slug) : null;
     return `<div class="act">
       <time>${fmt(a.created_at)}</time>
-      <div class="txt">${txt}${l ? ` <span class="qty">· ${esc(l.name)}</span>` : ''}</div>
+      <div class="txt">${txt}${l ? (a.action === 'move' ? ` <b>${esc(l.name)}</b>` : ` <span class="qty">· ${esc(l.name)}</span>`) : ''}</div>
     </div>`;
   }).join('')}</div>`;
 }
@@ -457,10 +473,43 @@ function wire() {
     shown.forEach((i) => allPicked ? state.selected.delete(i.id) : state.selected.add(i.id));
     render();
   });
+  const mv = document.querySelector('[data-act="movesel"]');
+  if (mv) mv.onchange = () => {
+    const target = state.lists.find((l) => l.id === mv.value);
+    const picked = state.items.filter((i) => state.selected.has(i.id));
+    if (target && picked.length) moveItems(picked, target);
+  };
   on('delsel', () => {
     const picked = state.items.filter((i) => state.selected.has(i.id));
     if (picked.length) removeItems(picked);
   });
+}
+
+// Append to the end of the target list, keeping the items' relative order and
+// translating status if they cross between a bag and the checklist.
+async function moveItems(items, target) {
+  const before = items.map((i) => ({ ...i }));
+  let last = itemsOf(target.id).reduce((m, i) => Math.max(m, i.sort_order), 0);
+  const updates = [...items]
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((i) => ({
+      id: i.id,
+      fields: { list_id: target.id, status: statusFor(i.status, target.kind), sort_order: (last += 10) },
+    }));
+
+  updates.forEach(({ id, fields }) => Object.assign(state.items.find((i) => i.id === id), fields));
+  state.items.sort((a, b) => a.sort_order - b.sort_order);
+  state.selected.clear();
+  render();
+
+  const results = await Promise.all(updates.map(({ id, fields }) =>
+    sb.from('items').update(fields).eq('id', id)));
+  const failed = results.find((r) => r.error);
+  if (failed) {
+    before.forEach((b) => Object.assign(state.items.find((i) => i.id === b.id) || {}, b));
+    render();
+    alert(failed.error.message);
+  }
 }
 
 // One confirmation, whether it's a single row or a whole selection.
@@ -496,54 +545,62 @@ function openEdit(item, list) {
   $('#f_qty').value = item?.qty ?? '';
   $('#f_unit').value = item?.unit || '';
   $('#f_notes').value = item?.notes || '';
-  $('#qtyFields').hidden = list.kind === 'tasks';
   $('#f_del').hidden = !item;
 
-  $('#f_status').innerHTML = FLOW[list.kind]
-    .map((s) => `<option${s === (item?.status || FLOW[list.kind][0]) ? ' selected' : ''}>${s}</option>`).join('');
-  $('#catlist').innerHTML = [...new Set(itemsOf(list.id).map((i) => i.category).filter(Boolean))]
-    .map((c) => `<option value="${esc(c)}">`).join('');
+  $('#f_list').innerHTML = state.lists
+    .map((l) => `<option value="${l.id}"${l.id === list.id ? ' selected' : ''}>${esc(l.name)}</option>`).join('');
+  syncModalToList(item?.status || FLOW[list.kind][0]);
 
   dlg.showModal();
   $('#f_name').focus();
 }
 
+// Status options, qty fields and category suggestions follow the chosen list.
+function syncModalToList(status) {
+  const target = state.lists.find((l) => l.id === $('#f_list').value);
+  const wanted = statusFor(status, target.kind);
+  $('#qtyFields').hidden = target.kind === 'tasks';
+  $('#f_status').innerHTML = FLOW[target.kind]
+    .map((s) => `<option${s === wanted ? ' selected' : ''}>${s}</option>`).join('');
+  $('#catlist').innerHTML = [...new Set(itemsOf(target.id).map((i) => i.category).filter(Boolean))]
+    .map((c) => `<option value="${esc(c)}">`).join('');
+}
+$('#f_list').onchange = () => syncModalToList($('#f_status').value);
+
 $('#f_cancel').onclick = () => dlg.close();
 
 $('#editForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const { item, list } = state.editing;
+  const { item } = state.editing;
+  const target = state.lists.find((l) => l.id === $('#f_list').value);
   const qtyRaw = $('#f_qty').value;
   const fields = {
     name: $('#f_name').value.trim(),
     category: $('#f_cat').value.trim(),
     status: $('#f_status').value,
     notes: $('#f_notes').value.trim() || null,
-    unit: list.kind === 'tasks' ? null : ($('#f_unit').value.trim() || null),
-    qty: list.kind === 'tasks' || qtyRaw === '' ? null : Number(qtyRaw),
+    unit: target.kind === 'tasks' ? null : ($('#f_unit').value.trim() || null),
+    qty: target.kind === 'tasks' || qtyRaw === '' ? null : Number(qtyRaw),
   };
   if (!fields.name) return;
   dlg.close();
 
+  const endOf = (l) => itemsOf(l.id).reduce((m, i) => Math.max(m, i.sort_order), 0) + 10;
   if (item) {
+    if (target.id !== item.list_id) Object.assign(fields, { list_id: target.id, sort_order: endOf(target) });
     await patch(item.id, fields);
   } else {
-    const last = itemsOf(list.id).reduce((m, i) => Math.max(m, i.sort_order), 0);
     const { error } = await sb.from('items')
-      .insert({ ...fields, list_id: list.id, sort_order: last + 10 });
+      .insert({ ...fields, list_id: target.id, sort_order: endOf(target) });
     if (error) return alert(error.message);
     await refresh(); render();
   }
 });
 
-$('#f_del').onclick = async () => {
+$('#f_del').onclick = () => {
   const { item } = state.editing;
-  if (!confirm(`Delete "${item.name}" for everyone on the board?`)) return;
   dlg.close();
-  const { error } = await sb.from('items').delete().eq('id', item.id);
-  if (error) return alert(error.message);
-  state.items = state.items.filter((i) => i.id !== item.id);
-  render();
+  removeItems([item]);
 };
 
 boot();
