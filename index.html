@@ -167,6 +167,11 @@
   /* --------------------------------------------------------------- list */
   .listhead{padding:18px 20px 14px;border-bottom:1px solid var(--line-soft)}
   .listhead h1{margin:0 0 4px;font-size:19px;letter-spacing:-.02em}
+  .listhead-top{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap}
+  .listhead-top h1{flex:1;min-width:0}
+  .listacts{display:flex;gap:6px;flex:none}
+  .btn.ghost.danger-text{color:var(--danger)}
+  .btn.ghost.danger-text:hover{background:color-mix(in srgb,var(--danger) 12%,transparent)}
   .listhead p{margin:0;color:var(--ink-2);font-size:13.5px;max-width:70ch}
   .toolbar{display:flex;gap:8px;padding:12px 20px;border-bottom:1px solid var(--line-soft);
     flex-wrap:wrap;align-items:center;background:var(--panel-2)}
@@ -314,6 +319,19 @@
       <button type="button" class="btn ghost del" id="f_del">Delete</button>
       <button type="button" class="btn ghost" id="f_cancel">Cancel</button>
       <button type="submit" class="btn" id="f_save">Save</button>
+    </footer>
+  </form>
+</dialog>
+
+<dialog id="listDlg">
+  <form method="dialog" class="sheet" id="listForm">
+    <h3>Edit list</h3>
+    <label class="field"><span>Name</span><input type="text" id="l_name" required maxlength="60"></label>
+    <label class="field"><span>Description</span><textarea id="l_sub" placeholder="Shown under the list name"></textarea></label>
+    <footer>
+      <button type="button" class="btn ghost del" id="l_del">Delete list</button>
+      <button type="button" class="btn ghost" id="l_cancel">Cancel</button>
+      <button type="submit" class="btn">Save</button>
     </footer>
   </form>
 </dialog>

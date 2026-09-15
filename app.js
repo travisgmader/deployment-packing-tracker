@@ -185,6 +185,13 @@ async function refresh() {
   lastSync = Date.now();
 }
 
+let renderQueued = false;
+function scheduleRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; render(); });
+}
+
 let boardChannel = null;
 let channelGen = 0;
 let retryTimer = null;
@@ -216,12 +223,25 @@ function subscribe() {
         if (i >= 0) state.items[i] = p.new; else state.items.push(p.new);
         state.items.sort((a, b) => a.sort_order - b.sort_order);
       }
-      render();
+      scheduleRender();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'lists' }, (p) => {
+      if (p.eventType === 'DELETE') {
+        const gone = state.lists.find((l) => l.id === p.old.id);
+        state.lists = state.lists.filter((l) => l.id !== p.old.id);
+        state.items = state.items.filter((i) => i.list_id !== p.old.id);
+        if (gone && state.tab === gone.slug) leaveTab();
+      } else {
+        const i = state.lists.findIndex((l) => l.id === p.new.id);
+        if (i >= 0) state.lists[i] = p.new; else state.lists.push(p.new);
+        state.lists.sort((a, b) => a.sort_order - b.sort_order);
+      }
+      scheduleRender();
     })
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity' }, (p) => {
       state.activity.unshift(p.new);
       state.activity = state.activity.slice(0, 80);
-      if (state.tab === 'activity') render();
+      if (state.tab === 'activity') scheduleRender();
     })
     .subscribe(async (status) => {
       if (ch !== boardChannel) return;          // a channel we've already replaced
@@ -390,7 +410,13 @@ function listView(list) {
   return `
   <div class="card">
     <div class="listhead">
-      <h1>${esc(list.name)} <span class="qty">${t.done}/${t.total} ${DONE[list.kind].toLowerCase()}</span></h1>
+      <div class="listhead-top">
+        <h1>${esc(list.name)} <span class="qty">${t.done}/${t.total} ${DONE[list.kind].toLowerCase()}</span></h1>
+        <div class="listacts">
+          <button class="btn sm ghost" data-act="editlist">✎ Rename</button>
+          <button class="btn sm ghost danger-text" data-act="dellist">🗑 Delete list</button>
+        </div>
+      </div>
       <p>${esc(list.subtitle || '')}</p>
     </div>
     <div class="toolbar">
@@ -437,12 +463,18 @@ function activityView() {
       txt = `<b>${esc(a.actor_name)}</b> moved <b>${esc(a.item_name)}</b> to <span class="s" data-s="${esc(a.to_status)}">${esc(a.to_status)}</span>`;
     else if (a.action === 'add')    txt = `<b>${esc(a.actor_name)}</b> added <b>${esc(a.item_name)}</b>`;
     else if (a.action === 'delete') txt = `<b>${esc(a.actor_name)}</b> removed <b>${esc(a.item_name)}</b>`;
+    else if (a.action === 'list_rename')
+      txt = `<b>${esc(a.actor_name)}</b> renamed the list <b>${esc(a.detail)}</b> to <b>${esc(a.item_name)}</b>`;
+    else if (a.action === 'list_edit')
+      txt = `<b>${esc(a.actor_name)}</b> edited the description of <b>${esc(a.item_name)}</b>`;
+    else if (a.action === 'list_delete')
+      txt = `<b>${esc(a.actor_name)}</b> deleted the list <b>${esc(a.item_name)}</b>${a.detail ? ` and its ${esc(a.detail)}` : ''}`;
     else if (a.action === 'move') {
       const from = a.from_list ? listBySlug(a.from_list) : null;
       txt = `<b>${esc(a.actor_name)}</b> moved <b>${esc(a.item_name)}</b>${from ? ` from ${esc(from.name)}` : ''} to`;
     }
     else                            txt = `<b>${esc(a.actor_name)}</b> edited <b>${esc(a.item_name)}</b>`;
-    const l = a.list_slug ? listBySlug(a.list_slug) : null;
+    const l = a.list_slug && !a.action.startsWith('list_') ? listBySlug(a.list_slug) : null;
     return `<div class="act">
       <time>${fmt(a.created_at)}</time>
       <div class="txt">${txt}${l ? (a.action === 'move' ? ` <b>${esc(l.name)}</b>` : ` <span class="qty">· ${esc(l.name)}</span>`) : ''}</div>
@@ -499,6 +531,8 @@ function wire() {
     if (el) el.onclick = fn;
   };
   on('add', () => openEdit(null, listBySlug(state.tab)));
+  on('editlist', () => openListEdit(listBySlug(state.tab)));
+  on('dellist', () => deleteList(listBySlug(state.tab)));
   on('selectmode', () => {
     state.selectMode = !state.selectMode;
     state.selected.clear();
@@ -640,5 +674,67 @@ $('#f_del').onclick = () => {
   dlg.close();
   removeItems([item]);
 };
+
+/* ------------------------------------------------------------ list editor */
+
+const listDlg = $('#listDlg');
+let editingList = null;
+
+function leaveTab() {
+  state.tab = 'summary';
+  state.selectMode = false;
+  state.selected.clear();
+}
+
+function openListEdit(list) {
+  editingList = list;
+  $('#l_name').value = list.name;
+  $('#l_sub').value = list.subtitle || '';
+  listDlg.showModal();
+  $('#l_name').select();
+}
+
+$('#l_cancel').onclick = () => listDlg.close();
+
+$('#listForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const list = editingList;
+  const fields = { name: $('#l_name').value.trim(), subtitle: $('#l_sub').value.trim() || null };
+  if (!fields.name) return;
+  listDlg.close();
+  if (fields.name === list.name && fields.subtitle === (list.subtitle || null)) return;
+
+  const before = { ...list };
+  Object.assign(list, fields);
+  render();
+  const { error } = await sb.from('lists').update(fields).eq('id', list.id);
+  if (error) { Object.assign(list, before); render(); alert(error.message); }
+});
+
+$('#l_del').onclick = () => {
+  const list = editingList;
+  listDlg.close();
+  deleteList(list);
+};
+
+// One confirmation. The list's items go with it, so say how many.
+async function deleteList(list) {
+  const n = itemsOf(list.id).length;
+  const what = n === 0 ? 'It has no items.' : n === 1 ? 'Its 1 item will be deleted too.' : `All ${n} items in it will be deleted too.`;
+  if (!confirm(`Delete the "${list.name}" list for everyone on the board? ${what} This can't be undone.\n\nTo keep some items, cancel and use Select → Move to first.`)) return;
+
+  const keepLists = state.lists, keepItems = state.items, keepTab = state.tab;
+  state.lists = state.lists.filter((l) => l.id !== list.id);
+  state.items = state.items.filter((i) => i.list_id !== list.id);
+  if (state.tab === list.slug) leaveTab();
+  render();
+
+  const { error } = await sb.from('lists').delete().eq('id', list.id);
+  if (error) {
+    state.lists = keepLists; state.items = keepItems; state.tab = keepTab;
+    render();
+    alert(error.message);
+  }
+}
 
 boot();
