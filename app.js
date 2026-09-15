@@ -432,7 +432,7 @@ function listView(list) {
       </div>
       <p>${esc(list.subtitle || '')}</p>
     </div>
-    <div class="listbar ${state.selectMode ? 'pinned' : ''}">
+    <div class="listbar">
     <div class="toolbar">
       <input type="text" id="search" placeholder="Search ${esc(list.name)}…" value="${esc(state.search)}">
       <div class="segs">
