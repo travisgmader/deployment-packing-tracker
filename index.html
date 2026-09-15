@@ -261,6 +261,10 @@
   @media (max-width:560px){
     .row{padding-inline:14px;gap:9px}
     .cat,.listhead,.toolbar,.addbar,.act,.selbar{padding-inline:14px}
+    /* Title gets the full width; list actions sit on their own line beneath it. */
+    .listhead-top{flex-direction:column;gap:8px}
+    .listhead-top h1{width:100%;margin-bottom:0}
+    .listacts{order:2}
     .chip{min-width:0;padding:5px 9px;font-size:11.5px}
     .overall{padding:18px;gap:16px}
     .ring{width:88px;height:88px}
