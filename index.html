@@ -8,6 +8,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎒</text></svg>">
 <style>
   :root{
+    color-scheme:light;
     --bg:#f5f4f0; --panel:#fffefb; --panel-2:#faf8f3; --line:#e2ded3; --line-soft:#eeeae0;
     --ink:#22201b; --ink-2:#5d5951; --ink-3:#8d8879;
     --accent:#3f5f4a; --accent-ink:#fff; --accent-soft:#e6ede7;
@@ -22,6 +23,7 @@
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
+      color-scheme:dark;
       --bg:#14171a; --panel:#1b1f23; --panel-2:#20252a; --line:#2e353c; --line-soft:#262c32;
       --ink:#e8e6e1; --ink-2:#a8a49c; --ink-3:#77736c;
       --accent:#7fb391; --accent-ink:#11201a; --accent-soft:#233029;
@@ -34,6 +36,7 @@
     }
   }
   :root[data-theme="dark"]{
+    color-scheme:dark;
     --bg:#14171a; --panel:#1b1f23; --panel-2:#20252a; --line:#2e353c; --line-soft:#262c32;
     --ink:#e8e6e1; --ink-2:#a8a49c; --ink-3:#77736c;
     --accent:#7fb391; --accent-ink:#11201a; --accent-soft:#233029;
@@ -254,7 +257,12 @@
   .act .s[data-s="Packed"],.act .s[data-s="Done"]{background:var(--packed-bg);color:var(--packed)}
 
   /* -------------------------------------------------------------- modal */
-  dialog{border:none;padding:0;background:transparent;max-width:min(440px,calc(100vw - 32px));width:100%}
+  /* The browser's own dialog style sets color: CanvasText (black), which beat the
+     theme and left pop-up text black on the dark panel. Use the theme text color. */
+  dialog{border:none;padding:0;background:transparent;max-width:min(440px,calc(100vw - 32px));width:100%;
+    color:var(--ink)}
+  select option{background:var(--panel);color:var(--ink)}
+  ::placeholder{color:var(--ink-3);opacity:1}
   dialog::backdrop{background:rgba(20,18,14,.45);backdrop-filter:blur(2px)}
   .sheet{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
     box-shadow:0 24px 60px -20px rgba(0,0,0,.5);padding:22px}
