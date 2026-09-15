@@ -292,6 +292,7 @@ function renderTabs() {
     tabs.push(`<button data-tab="${l.slug}" aria-current="${state.tab === l.slug}">${esc(l.name)}` +
       `<span class="pill${cls}">${t.done}/${t.total}</span></button>`);
   });
+  tabs.push(`<button class="tabadd" data-act="newlist" title="Add a list">+ New list</button>`);
   tabs.push(`<button data-tab="activity" aria-current="${state.tab === 'activity'}">Activity</button>`);
   $('#tabs').innerHTML = tabs.join('');
   // On a phone the strip scrolls; keep the tab you're on in view.
@@ -350,6 +351,10 @@ function summaryView() {
         <div class="pct"><span>${t.done} ${DONE[l.kind].toLowerCase()}</span><b>${Math.round(t.pct * 100)}%</b></div>
       </button>`;
     }).join('')}
+    <button class="bagcard newcard" data-act="newlist">
+      <span class="plus">+</span>
+      <span>New list</span>
+    </button>
   </div>
 
   <h2 class="sec">Worth remembering</h2>
@@ -463,6 +468,8 @@ function activityView() {
       txt = `<b>${esc(a.actor_name)}</b> moved <b>${esc(a.item_name)}</b> to <span class="s" data-s="${esc(a.to_status)}">${esc(a.to_status)}</span>`;
     else if (a.action === 'add')    txt = `<b>${esc(a.actor_name)}</b> added <b>${esc(a.item_name)}</b>`;
     else if (a.action === 'delete') txt = `<b>${esc(a.actor_name)}</b> removed <b>${esc(a.item_name)}</b>`;
+    else if (a.action === 'list_add')
+      txt = `<b>${esc(a.actor_name)}</b> added the list <b>${esc(a.item_name)}</b>`;
     else if (a.action === 'list_rename')
       txt = `<b>${esc(a.actor_name)}</b> renamed the list <b>${esc(a.detail)}</b> to <b>${esc(a.item_name)}</b>`;
     else if (a.action === 'list_edit')
@@ -532,6 +539,7 @@ function wire() {
   };
   on('add', () => openEdit(null, listBySlug(state.tab)));
   on('editlist', () => openListEdit(listBySlug(state.tab)));
+  document.querySelectorAll('[data-act="newlist"]').forEach((b) => b.onclick = () => openListEdit(null));
   on('dellist', () => deleteList(listBySlug(state.tab)));
   on('selectmode', () => {
     state.selectMode = !state.selectMode;
@@ -686,12 +694,52 @@ function leaveTab() {
   state.selected.clear();
 }
 
+// The same form edits an existing list or, given null, creates a new one.
 function openListEdit(list) {
   editingList = list;
-  $('#l_name').value = list.name;
-  $('#l_sub').value = list.subtitle || '';
+  $('#l_title').textContent = list ? 'Edit list' : 'New list';
+  $('#l_save').textContent = list ? 'Save' : 'Create list';
+  $('#l_name').value = list?.name || '';
+  $('#l_sub').value = list?.subtitle || '';
+  $('#l_kind').value = 'packing';
+  $('#l_kindField').hidden = !!list;   // a list's type is fixed once it has statuses
+  $('#l_del').hidden = !list;
   listDlg.showModal();
-  $('#l_name').select();
+  list ? $('#l_name').select() : $('#l_name').focus();
+}
+
+// Tabs are keyed by slug, so it must be unique on this board and must not be
+// one of the fixed tab names.
+function slugFor(name, taken) {
+  const base = name.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'list';
+  const reserved = new Set(['summary', 'activity', ...taken]);
+  let slug = base, n = 2;
+  while (reserved.has(slug)) slug = `${base}-${n++}`;
+  return slug;
+}
+
+async function createList(fields, kind) {
+  const taken = state.lists.map((l) => l.slug);
+  const sort_order = state.lists.reduce((m, l) => Math.max(m, l.sort_order), 0) + 1;
+  // Someone else on the board could take the same slug at the same moment.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const slug = slugFor(fields.name, taken);
+    const { data, error } = await sb.from('lists')
+      .insert({ ...fields, kind, slug, sort_order }).select().single();
+    if (!error) {
+      if (!state.lists.some((l) => l.id === data.id)) state.lists.push(data);
+      state.lists.sort((a, b) => a.sort_order - b.sort_order);
+      state.tab = data.slug;
+      state.search = ''; state.filter = 'all'; state.selectMode = false; state.selected.clear();
+      window.scrollTo(0, 0);
+      render();
+      return;
+    }
+    if (error.code !== '23505') return alert(error.message);
+    taken.push(slug);
+  }
+  alert('Could not pick a unique name for that list. Try a slightly different name.');
 }
 
 $('#l_cancel').onclick = () => listDlg.close();
@@ -702,6 +750,7 @@ $('#listForm').addEventListener('submit', async (e) => {
   const fields = { name: $('#l_name').value.trim(), subtitle: $('#l_sub').value.trim() || null };
   if (!fields.name) return;
   listDlg.close();
+  if (!list) return createList(fields, $('#l_kind').value);
   if (fields.name === list.name && fields.subtitle === (list.subtitle || null)) return;
 
   const before = { ...list };
