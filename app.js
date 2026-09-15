@@ -275,8 +275,16 @@ async function patch(id, fields) {
 
 /* ---------------------------------------------------------------- render */
 
+// The pinned list bar sits just under the sticky header, whose height changes
+// with screen width (the tab strip and brand row wrap differently on phones).
+function syncHeaderHeight() {
+  document.documentElement.style.setProperty('--header-h', `${$('header.top').offsetHeight}px`);
+}
+window.addEventListener('resize', syncHeaderHeight);
+
 function render() {
   renderTabs();
+  syncHeaderHeight();
   const v = $('#view');
   if (state.tab === 'summary') v.innerHTML = summaryView();
   else if (state.tab === 'activity') v.innerHTML = activityView();
@@ -424,6 +432,7 @@ function listView(list) {
       </div>
       <p>${esc(list.subtitle || '')}</p>
     </div>
+    <div class="listbar ${state.selectMode ? 'pinned' : ''}">
     <div class="toolbar">
       <input type="text" id="search" placeholder="Search ${esc(list.name)}…" value="${esc(state.search)}">
       <div class="segs">
@@ -443,6 +452,7 @@ function listView(list) {
       </select>
       <button class="btn sm danger-btn" data-act="delsel" ${state.selected.size ? '' : 'disabled'}>Delete</button>
     </div>` : ''}
+    </div>
     ${body}
     <div class="addbar">
       <span class="qty">${state.selectMode

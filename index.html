@@ -129,7 +129,7 @@
 
   main{padding-block:20px 60px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-    box-shadow:var(--shadow);overflow:hidden}
+    box-shadow:var(--shadow);overflow:hidden;overflow:clip}
   h2.sec{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);
     margin:26px 0 10px;font-weight:700}
   h2.sec:first-child{margin-top:0}
@@ -231,8 +231,11 @@
   .selbar{
     display:flex;align-items:center;gap:9px;padding:10px 20px;flex-wrap:wrap;
     background:var(--accent-soft);border-bottom:1px solid var(--line-soft);
-    position:sticky;top:0;z-index:5;
   }
+  /* In select mode the search/filter row and the selection bar stay pinned under
+     the page header while the list scrolls. --header-h is measured in app.js. */
+  .listbar.pinned{position:sticky;top:var(--header-h,0px);z-index:20;
+    box-shadow:0 8px 14px -10px rgba(0,0,0,.45)}
   .selcount{font-size:13px;font-weight:700;color:var(--accent);margin-right:auto;
     font-variant-numeric:tabular-nums}
   select.movesel{width:auto;padding:6px 10px;font-size:13px;font-weight:600;background:var(--panel)}
