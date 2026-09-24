@@ -123,35 +123,110 @@ function note(sel, kind, text) {
   $(sel).innerHTML = `<div class="msg ${kind}">${esc(text)}</div>`;
 }
 
+// Three ways in. A password is the everyday path because it sends no mail at
+// all: the project uses Supabase's built-in mailer, which allows only a couple
+// of messages an hour across everyone. The magic link stays as the way back in
+// for anyone who forgets their password.
+const GATE_BTNS = ['#loginBtn', '#signupBtn', '#magicBtn'];
+
+function lockGate(sel, label) {
+  GATE_BTNS.forEach((s) => { $(s).disabled = true; });
+  const btn = $(sel);
+  btn.dataset.idle = btn.textContent;
+  btn.textContent = label;
+}
+
+function unlockGate() {
+  GATE_BTNS.forEach((s) => {
+    const btn = $(s);
+    btn.disabled = false;
+    if (btn.dataset.idle) { btn.textContent = btn.dataset.idle; delete btn.dataset.idle; }
+  });
+}
+
+// Supabase's own wording is terse ("Invalid login credentials") and leaves
+// people stuck on the gate. Say what to do instead.
+function gateError(error, email) {
+  const m = error.message || '';
+  if (/rate limit|too many requests/i.test(m) || error.status === 429)
+    return 'Too many sign-in emails have gone out in the last hour — that limit is shared by everyone using the tracker. Wait an hour and try again, or ask Travis to send you a link directly.';
+  if (/invalid login credentials/i.test(m))
+    return `That email and password don't match. If you've never used the tracker, choose Create account instead.`;
+  if (/already registered|already exists/i.test(m))
+    return `${email} already has an account. Sign in with its password, or use the sign-in link below if you've forgotten it.`;
+  if (/password should be at least|weak password/i.test(m))
+    return 'Pick a password of at least 6 characters.';
+  if (/email not confirmed/i.test(m))
+    return 'This account still needs its address confirmed — use the sign-in link below and it confirms itself.';
+  if (/signups? not allowed/i.test(m))
+    return `New sign-ups are closed right now. Ask Travis to add ${email}, then try again.`;
+  return m;
+}
+
+// enter() is reached through onAuthStateChange on success, so these handlers
+// only have to report failure.
 $('#loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const btn = $('#loginBtn');
   const email = $('#email').value.trim();
-  btn.disabled = true; btn.textContent = 'Sending…';
+  lockGate('#loginBtn', 'Signing in…');
+  const { error } = await sb.auth.signInWithPassword({ email, password: $('#password').value });
+  unlockGate();
+  if (error) note('#loginMsg', 'err', gateError(error, email));
+});
+
+$('#signupBtn').addEventListener('click', async () => {
+  if (!$('#loginForm').reportValidity()) return;
+  const email = $('#email').value.trim();
+  lockGate('#signupBtn', 'Creating…');
+  const { data, error } = await sb.auth.signUp({
+    email,
+    password: $('#password').value,
+    options: { emailRedirectTo: location.origin + location.pathname },
+  });
+  unlockGate();
+  if (error) return note('#loginMsg', 'err', gateError(error, email));
+  // With "Confirm email" off the account is live at once and the session
+  // arrives through onAuthStateChange. With it on, there is no session yet.
+  if (!data.session)
+    note('#loginMsg', 'ok', `Check ${email} to confirm the address, then sign in with your password.`);
+});
+
+// The password field is required for the form, but a link only needs an email.
+$('#magicBtn').addEventListener('click', async () => {
+  if (!$('#email').reportValidity()) return;
+  const email = $('#email').value.trim();
+  lockGate('#magicBtn', 'Sending…');
   const { error } = await sb.auth.signInWithOtp({
     email,
     options: {
       emailRedirectTo: location.origin + location.pathname,
-      // Anyone can sign in: a brand-new email gets its own board, pre-filled
-      // from the starter list with nothing checked off.
       shouldCreateUser: true,
     },
   });
-  btn.disabled = false; btn.textContent = 'Email me a sign-in link';
-  if (error) {
-    // Only reachable if signups get switched off again on the project.
-    if (/signups? not allowed/i.test(error.message))
-      return note('#loginMsg', 'err',
-        `New sign-ups are closed right now. Ask Travis to add ${email}, then try again.`);
-    // The project sends through Supabase's built-in mailer, which allows only a
-    // couple of messages an hour across everyone. Say so plainly — otherwise
-    // this looks like the site is broken.
-    if (/rate limit|too many requests/i.test(error.message) || error.status === 429)
-      return note('#loginMsg', 'err',
-        'Too many sign-in emails have gone out in the last hour — that limit is shared by everyone using the tracker. Wait an hour and try again, or ask Travis to send you a link directly.');
-    return note('#loginMsg', 'err', error.message);
-  }
-  note('#loginMsg', 'ok', `Check ${email} — the link is good for one hour and works on any device. First time here? The same link creates your board. If it hasn't arrived in a few minutes, look in your spam folder before requesting another: only a couple of these can be sent per hour.`);
+  unlockGate();
+  if (error) return note('#loginMsg', 'err', gateError(error, email));
+  note('#loginMsg', 'ok', `Check ${email} — the link is good for one hour and works on any device. If it hasn't arrived in a few minutes, look in your spam folder before requesting another: only a couple of these can be sent per hour.`);
+});
+
+// Accounts created before passwords existed have none, so the everyday
+// password sign-in would reject them. This is how they get one.
+$('#setpw').addEventListener('click', () => {
+  $('#f_pw').value = '';
+  $('#f_pw_user').value = state.user?.email || '';
+  $('#pwMsg').innerHTML = '';
+  $('#pwDlg').showModal();
+});
+
+$('#pw_cancel').addEventListener('click', () => $('#pwDlg').close());
+
+$('#pwForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = $('#pw_save');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const { error } = await sb.auth.updateUser({ password: $('#f_pw').value });
+  btn.disabled = false; btn.textContent = 'Save';
+  if (error) return note('#pwMsg', 'err', gateError(error, state.user?.email || ''));
+  $('#pwDlg').close();
 });
 
 $('#signout').addEventListener('click', async () => {

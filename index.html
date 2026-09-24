@@ -76,7 +76,7 @@
   .field{display:block;margin-bottom:14px}
   .field span{display:block;font-size:12px;font-weight:600;color:var(--ink-2);
     text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
-  input[type=email],input[type=text],input[type=number],textarea,select{
+  input[type=email],input[type=text],input[type=password],input[type=number],textarea,select{
     width:100%;padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);
     border-radius:9px;outline:none;
   }
@@ -93,6 +93,12 @@
   .btn.ghost{background:var(--panel-2);color:var(--ink);border-color:var(--line)}
   .btn.ghost:hover{background:var(--line-soft);filter:none}
   .btn.sm{padding:6px 11px;font-size:13px}
+  .gate-actions{display:flex;gap:10px}
+  .gate-actions .btn{flex:1}
+  .linkish{display:block;width:100%;margin-top:15px;padding:0;background:none;border:0;
+    color:var(--ink-2);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer}
+  .linkish:hover{color:var(--ink)}
+  .linkish:disabled{opacity:.55;cursor:default}
   .msg{margin-top:14px;padding:11px 13px;border-radius:9px;font-size:13.5px;line-height:1.45}
   .msg.ok{background:var(--packed-bg);color:var(--packed)}
   .msg.err{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger)}
@@ -270,6 +276,7 @@
   .sheet{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
     box-shadow:0 24px 60px -20px rgba(0,0,0,.5);padding:22px}
   .sheet h3{margin:0 0 16px;font-size:16px}
+  .sheet .dlg-note{color:var(--ink-2);font-size:13px;line-height:1.5;margin:-8px 0 16px}
   .sheet .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .sheet footer{display:flex;gap:8px;margin-top:18px}
   .sheet footer .btn{flex:1}
@@ -296,14 +303,22 @@
 <div id="gate" hidden>
   <div class="gate-card">
     <h1>Deployment Packing Tracker</h1>
-    <p>Enter your email and we’ll send you a sign-in link — no password. If you haven’t used the tracker before, that link sets up your own packing board with the full list ready to check off.</p>
+    <p>New here? Enter your email, pick a password and choose <em>Create account</em> — you’ll get your own packing board with the full list ready to check off.</p>
     <form id="loginForm">
       <label class="field">
         <span>Email</span>
         <input type="email" id="email" required autocomplete="email" placeholder="you@example.com">
       </label>
-      <button class="btn full" type="submit" id="loginBtn">Email me a sign-in link</button>
+      <label class="field">
+        <span>Password</span>
+        <input type="password" id="password" required minlength="6" autocomplete="current-password" placeholder="at least 6 characters">
+      </label>
+      <div class="gate-actions">
+        <button class="btn" type="submit" id="loginBtn">Sign in</button>
+        <button class="btn ghost" type="button" id="signupBtn">Create account</button>
+      </div>
     </form>
+    <button class="linkish" type="button" id="magicBtn">Forgot your password? Email me a sign-in link</button>
     <div id="loginMsg"></div>
   </div>
 </div>
@@ -315,6 +330,7 @@
       <div class="top-row">
         <div class="brand">🎒 Packing Tracker <em id="liveNote"><span class="dot off"></span>connecting…</em></div>
         <span class="who" id="whoami"></span>
+        <button class="btn ghost sm" id="setpw">Password</button>
         <button class="btn ghost sm" id="signout">Sign out</button>
       </div>
       <nav class="tabs" id="tabs"></nav>
@@ -324,6 +340,27 @@
 </div>
 
 <!-- ============================================================== modal -->
+<dialog id="pwDlg">
+  <form method="dialog" class="sheet" id="pwForm">
+    <h3>Set a password</h3>
+    <p class="dlg-note">Accounts made before passwords existed have none yet. Set one here and
+      you can sign in without waiting on an email.</p>
+    <!-- Password managers want the account name beside the field; it is shown
+         nowhere and only ever filled from the signed-in session. -->
+    <input type="email" id="f_pw_user" autocomplete="username" hidden>
+    <label class="field">
+      <span>New password</span>
+      <input type="password" id="f_pw" required minlength="6" autocomplete="new-password"
+             placeholder="at least 6 characters">
+    </label>
+    <div id="pwMsg"></div>
+    <footer>
+      <button type="button" class="btn ghost" id="pw_cancel">Cancel</button>
+      <button type="submit" class="btn" id="pw_save">Save</button>
+    </footer>
+  </form>
+</dialog>
+
 <dialog id="editDlg">
   <form method="dialog" class="sheet" id="editForm">
     <h3 id="editTitle">Edit item</h3>

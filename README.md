@@ -11,8 +11,17 @@ Static HTML + [Supabase](https://supabase.com) — no build step, no framework.
   starter list with nothing checked. Two people can be put on the same board by
   pointing their `profiles.board_id` at it — then marking something *Packed*
   marks it packed for both of them.
-- **Open sign-in.** Anyone can enter their email and get a magic link; a new
-  address creates an account and its board on the spot. No password, ever.
+- **Open sign-in, email and password.** Anyone can create an account from the
+  gate; it and its board exist on the spot, with no message sent. A magic link
+  is still offered as the way back in for a forgotten password, and the header's
+  *Password* button sets one on an account that predates passwords.
+- **Why password first.** The project sends through Supabase's built-in mailer,
+  which allows only a couple of messages an hour *across the whole project*.
+  Anything on the everyday path that needs email breaks as soon as two people
+  sign up in the same hour. `scripts/signin-link.sh <email>` mints a link
+  without sending mail, so it is unaffected by that limit.
+  This depends on **Confirm email** being off (Authentication -> Sign In /
+  Providers); with it on, sign-up goes back to waiting on a message.
 - **Live.** Changes arrive over Supabase Realtime, so an open tab updates itself.
 - **Auditable.** A database trigger records who moved what, shown on the Activity tab.
 
