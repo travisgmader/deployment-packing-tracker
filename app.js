@@ -132,23 +132,26 @@ $('#loginForm').addEventListener('submit', async (e) => {
     email,
     options: {
       emailRedirectTo: location.origin + location.pathname,
-      shouldCreateUser: false,   // invite-only: signups are disabled project-wide
+      // Anyone can sign in: a brand-new email gets its own board, pre-filled
+      // from the starter list with nothing checked off.
+      shouldCreateUser: true,
     },
   });
   btn.disabled = false; btn.textContent = 'Email me a sign-in link';
   if (error) {
-    if (/signups? not allowed|user not found/i.test(error.message))
+    // Only reachable if signups get switched off again on the project.
+    if (/signups? not allowed/i.test(error.message))
       return note('#loginMsg', 'err',
-        `${email} isn't on the board yet. Ask Travis to add you, then try again.`);
+        `New sign-ups are closed right now. Ask Travis to add ${email}, then try again.`);
     // The project sends through Supabase's built-in mailer, which allows only a
     // couple of messages an hour across everyone. Say so plainly — otherwise
     // this looks like the site is broken.
     if (/rate limit|too many requests/i.test(error.message) || error.status === 429)
       return note('#loginMsg', 'err',
-        'Too many sign-in emails have gone out in the last hour — that limit is shared by everyone on the board. Wait an hour and try again, or ask Travis to send you a link directly.');
+        'Too many sign-in emails have gone out in the last hour — that limit is shared by everyone using the tracker. Wait an hour and try again, or ask Travis to send you a link directly.');
     return note('#loginMsg', 'err', error.message);
   }
-  note('#loginMsg', 'ok', `Check ${email} — the link is good for one hour and works on any device. If it hasn't arrived in a few minutes, look in your spam folder before requesting another: only a couple of these can be sent per hour.`);
+  note('#loginMsg', 'ok', `Check ${email} — the link is good for one hour and works on any device. First time here? The same link creates your board. If it hasn't arrived in a few minutes, look in your spam folder before requesting another: only a couple of these can be sent per hour.`);
 });
 
 $('#signout').addEventListener('click', async () => {

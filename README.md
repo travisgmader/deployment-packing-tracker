@@ -7,11 +7,13 @@ Static HTML + [Supabase](https://supabase.com) — no build step, no framework.
 
 ## How it works
 
-- **One shared board.** Everyone signed in sees and edits the same rows. Marking
-  something *Packed* marks it packed for the whole group.
+- **A board per person.** Each account gets its own board, seeded from the
+  starter list with nothing checked. Two people can be put on the same board by
+  pointing their `profiles.board_id` at it — then marking something *Packed*
+  marks it packed for both of them.
+- **Open sign-in.** Anyone can enter their email and get a magic link; a new
+  address creates an account and its board on the spot. No password, ever.
 - **Live.** Changes arrive over Supabase Realtime, so an open tab updates itself.
-- **Invite only.** Public signup is disabled on the project; only accounts an
-  admin creates can request a magic link.
 - **Auditable.** A database trigger records who moved what, shown on the Activity tab.
 
 ## Layout
@@ -23,7 +25,8 @@ Static HTML + [Supabase](https://supabase.com) — no build step, no framework.
 
 `config.js` holds the project's **anon** key. That key is publishable by design —
 every table is behind row-level security that requires an authenticated session,
-and signup is disabled, so the key alone grants nothing.
+and every policy scopes rows to the signer's own board, so the key alone grants
+nothing. Signing up gets you a board of your own and no view of anyone else's.
 
 The item catalog itself is *not* in this repo. It lives in the database, reachable
 only after signing in.
